@@ -1,21 +1,22 @@
+
+This is the official Pytorch/Pytorch implementation of the papers: <br/>
+
+
 # LEGNet: A Lightweight Edge-Gaussian Network for Low-Quality Remote Sensing Image Object Detection
 
-
-
-This is the official Pytorch/Pytorch implementation of the paper: <br/>
-> **LEGNet: A Lightweight Edge-Gaussian Network for Low-Quality Remote Sensing Image Object Detection**
 >
 > Wei Lu, Si-Bao Chen*, Hui-Dong Li, Qing-Ling Shu, Chris H. Q. Ding, Jin Tang, and Bin Luo 
-Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) Workshops, 2025
+>Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) Workshops, 2025
 
 > 
 
 and 
 
-> **UnravelNet: A backbone for enhanced multi-scale and low-quality feature extraction in remote sensing object detection**
+# UnravelNet: A backbone for enhanced multi-scale and low-quality feature extraction in remote sensing object detection
+
 >
 > Wei Lu, Hui-Dong Li, Chao Wang, Si-Bao Chen*, Chris H. Q. Ding, Jin Tang, and Bin Luo
-ISPRS Journal of Photogrammetry and Remote Sensing 2026
+>ISPRS Journal of Photogrammetry and Remote Sensing 2026
 > 
 
 
