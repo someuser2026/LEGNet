@@ -5,6 +5,7 @@ from .pkinet import PKINet
 from .lsknet import LSKNet
 
 from .legnet import LWEGNet
+from .unravelnet import UnravelNet
 
 
-__all__ = ['ReResNet', 'PKINet', 'LSKNet', 'LWEGNet']
+__all__ = ['ReResNet', 'PKINet', 'LSKNet', 'LWEGNet', 'UnravelNet']

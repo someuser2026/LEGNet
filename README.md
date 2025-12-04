@@ -39,6 +39,10 @@ LEGNet backbone code is placed under mmrotate/models/backbones/, and the train/t
 
 ## Pretrained Weights of Backbones
 
+Imagenet 300-epoch pre-trained UnravelNet-Tiny backbone: [Download](https://github.com/AeroVILab-AHU/LEGNet/releases/download/pre-train/unravelnet_tiny.pth)
+
+Imagenet 300-epoch pre-trained UnravelNet-Small backbone: [Download](https://github.com/AeroVILab-AHU/LEGNet/releases/download/pre-train/unravelnet_small.pth)
+
 Imagenet 300-epoch pre-trained LEGNet-Tiny backbone: [Download](https://github.com/lwCVer/LEGNet/releases/download/pre-train/LWEGNet_tiny.pth)
 
 Imagenet 300-epoch pre-trained LEGNet-Small backbone: [Download](https://github.com/lwCVer/LEGNet/releases/download/pre-train/LWEGNet_small.pth)
