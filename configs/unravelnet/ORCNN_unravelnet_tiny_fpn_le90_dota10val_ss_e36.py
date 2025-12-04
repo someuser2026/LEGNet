@@ -6,7 +6,7 @@ _base_ = [
 angle_version = 'le90'
 # fp16 = dict(loss_scale='dynamic')
 model = dict(
-    type='OrientedRCNN',
+    type='OrientedRCNN', 
     backbone=dict(
         type='UnravelNet',
         stem_dim=32,
