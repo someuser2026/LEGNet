@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+#PBS -N legnet_train
+#PBS -l select=1:ncpus=12:ngpus=1:mem=64gb
+#PBS -l walltime=11:00:00
+#PBS -j oe
+
+# Source user environment files to get access to conda/micromamba
+source ~/.bashrc 2>/dev/null || true
+source ~/.profile 2>/dev/null || true
+
+# Initialize micromamba using your specific setup from ~/.bashrc
+export MAMBA_ROOT_PREFIX="$HOME/opt/micromamba"
+export MAMBA_EXE='/srv/scratch/z5428587/mamba/bin/micromamba'
+export MAMBA_ROOT_PREFIX='/srv/scratch/z5428587/mamba'
+
+echo "Using micromamba from: $MAMBA_EXE"
+echo "Root prefix: $MAMBA_ROOT_PREFIX"
+
+# Initialize micromamba shell hook
+__mamba_setup="$("$MAMBA_EXE" shell hook --shell bash --root-prefix "$MAMBA_ROOT_PREFIX" 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    eval "$__mamba_setup"
+    echo "✓ Micromamba shell hook initialized successfully"
+else
+    alias micromamba="$MAMBA_EXE"
+    echo "✓ Using micromamba alias fallback"
+fi
+
+# Debug: Print job information
+echo "========================================="
+echo "Job started at: $(date)"
+echo "Job ID: $PBS_JOBID"
+echo "Job name: $PBS_JOBNAME"
+echo "Node: $(hostname)"
+echo "Working directory: $PBS_O_WORKDIR"
+echo "Initial Python: $(which python3)"
+echo "Initial Python version: $(python3 --version 2>&1)"
+echo "========================================="
+
+cd $PBS_O_WORKDIR
+echo "Changed to working directory: $(pwd)"
+
+
+# Check GPU availability
+echo "GPU information:"
+nvidia-smi || echo "Warning: nvidia-smi not available"
+echo "========================================="
+
+# Initialize micromamba/conda environment
+echo "Setting up Python environment..."
+echo "Available commands:"
+echo "  micromamba: $(command -v micromamba || echo 'not found')"
+
+# Activate the ultralytics_contrib environment
+echo "Activating LEGNet environment..."
+if micromamba activate LEGNet-Det; then
+    echo "✓ Environment activated successfully"
+    activation_status=0
+else
+    echo "⚠ Failed to activate environment"
+    activation_status=1
+fi
+
+echo "Final Python: $(which python3)"
+echo "Final Python version: $(python3 --version 2>&1)"
+echo "Current environment: ${CONDA_DEFAULT_ENV:-'system'}"
+echo "Python path: $PATH"
+echo "========================================="
+
+# Check Python and required modules
+echo "Python version: $(python3 --version)"
+echo "Python path: $(which python3)"
+
+REPO_ROOT="${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+cd "$REPO_ROOT"
+
+CONFIG_PATH="${1:-${CONFIG:-}}"
+if [ -z "$CONFIG_PATH" ]; then
+    echo "Usage:"
+    echo "  qsub tools/train_single_gpu.pbs -- <config.py> [extra train.py args]"
+    echo "  or"
+    echo "  qsub -v CONFIG=<config.py> tools/train_single_gpu.pbs"
+    exit 1
+fi
+
+if [ "${1:-}" = "$CONFIG_PATH" ]; then
+    shift
+fi
+
+RUN_NAME="$(basename "$CONFIG_PATH")"
+RUN_NAME="${RUN_NAME%.py}"
+WORK_DIR_BASE="${WORK_DIR_BASE:-/srv/scratch/runs/mmdet/obb}"
+WORK_DIR="${WORK_DIR_BASE%/}/${RUN_NAME}"
+mkdir -p "$WORK_DIR"
+
+echo "Repo root: $REPO_ROOT"
+echo "Config: $CONFIG_PATH"
+echo "Work dir: $WORK_DIR"
+echo "Extra args: $*"
+
+export PYTHONPATH="$REPO_ROOT:${PYTHONPATH:-}"
+
+python tools/train.py \
+    "$CONFIG_PATH" \
+    --work-dir "$WORK_DIR" \
+    --gpu-ids 0 \
+    "$@"
