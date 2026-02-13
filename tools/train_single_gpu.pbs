@@ -74,7 +74,7 @@ fi
 
 RUN_NAME="$(basename "$CONFIG_PATH")"
 RUN_NAME="${RUN_NAME%.py}"
-WORK_DIR_BASE="${WORK_DIR_BASE:-/srv/scratch/runs/mmdet/obb}"
+WORK_DIR_BASE="${WORK_DIR_BASE:-/srv/scratch/z5428587/runs/mmdet/obb}"
 WORK_DIR="${WORK_DIR_BASE%/}/${RUN_NAME}"
 mkdir -p "$WORK_DIR"
 
