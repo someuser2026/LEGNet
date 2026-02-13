@@ -6,93 +6,70 @@
 #PBS -m ae
 #PBS -j oe
 
-ERROR_FILE="${PBS_JOBID}.e${PBS_JOBID}"
+set -euo pipefail
 
-if [ -s "$ERROR_FILE" ]; then
-    mail -s "PBS Job ${PBS_JOBID} ERROR Output" z5428587@ad.unsw.edu.au < "$ERROR_FILE"
-fi
-
-# Source user environment files to get access to conda/micromamba
-source ~/.bashrc 2>/dev/null || true
-source ~/.profile 2>/dev/null || true
-
-# Initialize micromamba using your specific setup from ~/.bashrc
-export MAMBA_ROOT_PREFIX="$HOME/opt/micromamba"
-export MAMBA_EXE='/srv/scratch/z5428587/mamba/bin/micromamba'
-export MAMBA_ROOT_PREFIX='/srv/scratch/z5428587/mamba'
+# Micromamba configuration (can be overridden via qsub -v)
+export MAMBA_EXE="${MAMBA_EXE:-/srv/scratch/z5428587/mamba/bin/micromamba}"
+export MAMBA_ROOT_PREFIX="${MAMBA_ROOT_PREFIX:-/srv/scratch/z5428587/mamba}"
+ENV_NAME="${ENV_NAME:-LEGNet-Det}"
 
 echo "Using micromamba from: $MAMBA_EXE"
 echo "Root prefix: $MAMBA_ROOT_PREFIX"
 
-# Initialize micromamba shell hook
-__mamba_setup="$("$MAMBA_EXE" shell hook --shell bash --root-prefix "$MAMBA_ROOT_PREFIX" 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__mamba_setup"
-    echo "✓ Micromamba shell hook initialized successfully"
+# Initialize micromamba shell hook if available
+if [ -x "$MAMBA_EXE" ]; then
+    __mamba_setup="$("$MAMBA_EXE" shell hook --shell bash --root-prefix "$MAMBA_ROOT_PREFIX" 2>/dev/null || true)"
+    if [ -n "$__mamba_setup" ]; then
+        eval "$__mamba_setup"
+        if micromamba activate "$ENV_NAME"; then
+            echo "Environment activated: $ENV_NAME"
+        else
+            echo "ERROR: Failed to activate environment '$ENV_NAME'"
+            exit 1
+        fi
+    else
+        echo "ERROR: Failed to initialize micromamba shell hook."
+        exit 1
+    fi
 else
-    alias micromamba="$MAMBA_EXE"
-    echo "✓ Using micromamba alias fallback"
+    echo "WARNING: micromamba not found at $MAMBA_EXE. Continuing without activation."
 fi
+
+REPO_ROOT="${REPO_ROOT:-${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/.." && pwd)}}"
+cd "$REPO_ROOT"
 
 # Debug: Print job information
 echo "========================================="
 echo "Job started at: $(date)"
-echo "Job ID: $PBS_JOBID"
-echo "Job name: $PBS_JOBNAME"
+echo "Job ID: ${PBS_JOBID:-N/A}"
+echo "Job name: ${PBS_JOBNAME:-N/A}"
 echo "Node: $(hostname)"
-echo "Working directory: $PBS_O_WORKDIR"
-echo "Initial Python: $(which python3)"
-echo "Initial Python version: $(python3 --version 2>&1)"
+echo "Repo root: $REPO_ROOT"
+echo "Python: $(which python)"
+echo "Python version: $(python --version 2>&1)"
 echo "========================================="
-
-cd $PBS_O_WORKDIR
-echo "Changed to working directory: $(pwd)"
-
-
-# Check GPU availability
-echo "GPU information:"
-nvidia-smi || echo "Warning: nvidia-smi not available"
-echo "========================================="
-
-# Initialize micromamba/conda environment
-echo "Setting up Python environment..."
-echo "Available commands:"
-echo "  micromamba: $(command -v micromamba || echo 'not found')"
-
-# Activate the ultralytics_contrib environment
-echo "Activating LEGNet environment..."
-if micromamba activate LEGNet-Det; then
-    echo "✓ Environment activated successfully"
-    activation_status=0
-else
-    echo "⚠ Failed to activate environment"
-    activation_status=1
-fi
-
-echo "Final Python: $(which python3)"
-echo "Final Python version: $(python3 --version 2>&1)"
-echo "Current environment: ${CONDA_DEFAULT_ENV:-'system'}"
-echo "Python path: $PATH"
-echo "========================================="
-
-# Check Python and required modules
-echo "Python version: $(python3 --version)"
-echo "Python path: $(which python3)"
-
-REPO_ROOT="${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/.." && pwd)}"
-cd "$REPO_ROOT"
 
 CONFIG_PATH="${1:-${CONFIG:-}}"
+CONFIG_PATH="${CONFIG_YAML:-${CONFIG_PATH}}"
 if [ -z "$CONFIG_PATH" ]; then
     echo "Usage:"
-    echo "  qsub tools/train_single_gpu.pbs -- <config.py> [extra train.py args]"
-    echo "  or"
-    echo "  qsub -v CONFIG=<config.py> tools/train_single_gpu.pbs"
+    echo "  qsub -V -v \"CONFIG_YAML=<config.py>\" tools/train_single_gpu.pbs"
+    echo "  qsub -V -v \"CONFIG=<config.py>\" tools/train_single_gpu.pbs"
+    echo "  (fallback) qsub tools/train_single_gpu.pbs -- <config.py> [extra train.py args]"
     exit 1
 fi
 
 if [ "${1:-}" = "$CONFIG_PATH" ]; then
     shift
+fi
+
+if [ ! -f "$CONFIG_PATH" ]; then
+    if [ -f "$REPO_ROOT/$CONFIG_PATH" ]; then
+        CONFIG_PATH="$REPO_ROOT/$CONFIG_PATH"
+    else
+        echo "ERROR: Config file not found: $CONFIG_PATH"
+        exit 1
+    fi
 fi
 
 RUN_NAME="$(basename "$CONFIG_PATH")"
@@ -101,15 +78,116 @@ WORK_DIR_BASE="${WORK_DIR_BASE:-/srv/scratch/runs/mmdet/obb}"
 WORK_DIR="${WORK_DIR_BASE%/}/${RUN_NAME}"
 mkdir -p "$WORK_DIR"
 
-echo "Repo root: $REPO_ROOT"
+SEED="${SEED:-}"
+NO_VALIDATE="${NO_VALIDATE:-0}"
+RESUME_FROM="${RESUME_FROM:-}"
+EMAIL_TO="${EMAIL_TO:-z5428587@ad.unsw.edu.au}"
+JOB_TAG="${PBS_JOBID:-manual_$$}"
+STDOUT_LOG="${WORK_DIR}/${RUN_NAME}_${JOB_TAG}.out.log"
+STDERR_LOG="${WORK_DIR}/${RUN_NAME}_${JOB_TAG}.err.log"
+
+send_failure_email() {
+    local exit_code="$1"
+    local subject="LEGNet PBS FAILED: ${RUN_NAME} (job ${PBS_JOBID:-N/A})"
+    local body_file
+    body_file="$(mktemp)"
+
+    {
+        echo "LEGNet training failed."
+        echo "Time: $(date)"
+        echo "Job ID: ${PBS_JOBID:-N/A}"
+        echo "Job Name: ${PBS_JOBNAME:-N/A}"
+        echo "Host: $(hostname)"
+        echo "Repo: $REPO_ROOT"
+        echo "Config: $CONFIG_PATH"
+        echo "Work dir: $WORK_DIR"
+        echo "Exit code: $exit_code"
+        echo "Stdout log: $STDOUT_LOG"
+        echo "Stderr log: $STDERR_LOG"
+        echo
+        echo "Command:"
+        printf '  %q' "${cmd[@]}"
+        echo
+        echo
+        echo "----- BEGIN STDERR (full) -----"
+        if [ -s "$STDERR_LOG" ]; then
+            cat "$STDERR_LOG"
+        else
+            echo "(stderr log is empty)"
+        fi
+        echo "----- END STDERR -----"
+    } > "$body_file"
+
+    if command -v mail >/dev/null 2>&1; then
+        mail -s "$subject" "$EMAIL_TO" < "$body_file"
+    elif command -v mailx >/dev/null 2>&1; then
+        mailx -s "$subject" "$EMAIL_TO" < "$body_file"
+    elif command -v sendmail >/dev/null 2>&1; then
+        {
+            echo "To: $EMAIL_TO"
+            echo "Subject: $subject"
+            echo
+            cat "$body_file"
+        } | sendmail -t
+    else
+        echo "WARNING: No mail tool found (mail/mailx/sendmail). Cannot send failure email."
+        echo "Failure details are in: $STDERR_LOG"
+    fi
+
+    rm -f "$body_file"
+}
+
 echo "Config: $CONFIG_PATH"
 echo "Work dir: $WORK_DIR"
 echo "Extra args: $*"
+echo "Email on failure: $EMAIL_TO"
+echo "GPU information:"
+nvidia-smi || echo "Warning: nvidia-smi not available"
+echo "========================================="
 
 export PYTHONPATH="$REPO_ROOT:${PYTHONPATH:-}"
+cmd=(
+    python tools/train.py
+    "$CONFIG_PATH"
+    --work-dir "$WORK_DIR"
+    --gpu-ids 0
+)
 
-python tools/train.py \
-    "$CONFIG_PATH" \
-    --work-dir "$WORK_DIR" \
-    --gpu-ids 0 \
-    "$@"
+if [ -n "$SEED" ]; then
+    cmd+=(--seed "$SEED")
+fi
+
+if [ "$NO_VALIDATE" = "1" ] || [ "$NO_VALIDATE" = "true" ] || [ "$NO_VALIDATE" = "TRUE" ]; then
+    cmd+=(--no-validate)
+fi
+
+if [ -n "$RESUME_FROM" ]; then
+    cmd+=(--resume-from "$RESUME_FROM")
+fi
+
+if [ "$#" -gt 0 ]; then
+    cmd+=("$@")
+fi
+
+echo "Command:"
+printf '  %q' "${cmd[@]}"
+echo
+
+: > "$STDOUT_LOG"
+: > "$STDERR_LOG"
+
+set +e
+"${cmd[@]}" >> "$STDOUT_LOG" 2>> "$STDERR_LOG"
+train_exit=$?
+set -e
+
+if [ "$train_exit" -ne 0 ]; then
+    echo "Training failed with exit code $train_exit"
+    echo "----- BEGIN STDERR (full) -----"
+    cat "$STDERR_LOG"
+    echo "----- END STDERR -----"
+    send_failure_email "$train_exit" || true
+    exit "$train_exit"
+fi
+
+echo "Training completed successfully."
