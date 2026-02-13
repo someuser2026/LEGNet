@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'DOTADataset'
-classes = ('foreground')
+classes = ('foreground',)
 data_root = "/srv/scratch/z5428587/data_processed/Global/Annotated/variants/obb/planet_full_c448_ov35_kf20_10075-single_seed0/"
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
