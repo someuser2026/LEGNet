@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #PBS -N legnet_train
-#PBS -l select=1:ncpus=12:ngpus=1:mem=64gb:gpu_model=A100
+#PBS -l select=1:ncpus=6:ngpus=1:mem=32gb:gpu_model=A100
 #PBS -l walltime=11:00:00
 #PBS -M z5428587@ad.unsw.edu.au
 #PBS -m abe
