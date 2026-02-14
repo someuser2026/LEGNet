@@ -15,7 +15,7 @@ model = dict(
         fork_feat=True,
         drop_path_rate=0.1,
         # init_cfg=None,
-        init_cfg=dict(type='Pretrained', prefix='backbone.', checkpoint="/srv/scratch/z5428587/checkpoints/LEGNet_small.pth"),
+        init_cfg=dict(type='Pretrained', prefix='backbone.', checkpoint="/srv/scratch/z5428587/checkpoints/LWEGNet_small.pth"),
         # pretrained=None
         ),
     neck=dict(
