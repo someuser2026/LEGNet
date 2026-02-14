@@ -11,7 +11,7 @@ model = dict(
         type='LWEGNet',
         stem_dim=64,
         depths=(1, 4, 4, 2),
-        norm_layer=dict(type='SyncBN', requires_grad=True),
+        norm_layer=dict(type='BN', requires_grad=True),
         fork_feat=True,
         drop_path_rate=0.1,
         # init_cfg=None,
@@ -131,7 +131,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RResize', img_scale=(1024, 1024)),
+    dict(type='RResize', img_scale=(448, 448)),
     dict(
         type='RRandomFlip',
         flip_ratio=[0.25, 0.25, 0.25],
@@ -165,7 +165,7 @@ optimizer = dict(
     weight_decay=0.05)
 
 evaluation = dict(interval=1, metric='mAP', save_best='mAP')
-runner = dict(type='EpochBasedRunner', max_epochs=36)
-checkpoint_config = dict(interval=1, max_keep_ckpts=10)
+runner = dict(type='EpochBasedRunner', max_epochs=100)
+checkpoint_config = dict(interval=1, max_keep_ckpts=3)
 
 find_unused_parameters=False
