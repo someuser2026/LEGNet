@@ -17,7 +17,7 @@ model = dict(
         drop_path_rate=0.1,
         # init_cfg=None',
         init_cfg=dict(type='Pretrained',
-checkpoint="/data4/lw/UnravelNet/det/backbone_weights/unravelnet_u2.pth"),
+checkpoint="/srv/scratch/z5428587/checkpoints/unravelnet_small.pth"),
         pretrained=None),
     neck=dict(
         type='FPN',
@@ -124,7 +124,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RResize', img_scale=(1024, 1024)),
+    dict(type='RResize', img_scale=(448, 448)),
     dict(
         type='RRandomFlip',
         flip_ratio=[0.25, 0.25, 0.25],

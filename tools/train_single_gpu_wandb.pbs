@@ -84,6 +84,7 @@ RESUME_FROM="${RESUME_FROM:-}"
 WANDB_PROJECT="${WANDB_PROJECT:-}"
 TEST_AFTER_TRAIN="${TEST_AFTER_TRAIN:-1}"
 TEST_CHECKPOINT="${TEST_CHECKPOINT:-}"
+INFERENCE_ONLY="${INFERENCE_ONLY:-0}"
 EMAIL_TO="${EMAIL_TO:-z5428587@ad.unsw.edu.au}"
 JOB_TAG="${PBS_JOBID:-manual_$$}"
 STDOUT_LOG="${WORK_DIR}/${RUN_NAME}_${JOB_TAG}.out.log"
@@ -144,10 +145,15 @@ send_failure_email() {
     rm -f "$body_file"
 }
 
+is_true() {
+    [ "$1" = "1" ] || [ "$1" = "true" ] || [ "$1" = "TRUE" ]
+}
+
 echo "Config: $CONFIG_PATH"
 echo "Work dir: $WORK_DIR"
 echo "Extra args: $*"
 echo "W&B project override: ${WANDB_PROJECT:-<from config/default>}"
+echo "Inference-only mode: $INFERENCE_ONLY"
 echo "Run test after train: $TEST_AFTER_TRAIN"
 echo "Test checkpoint override: ${TEST_CHECKPOINT:-<auto>}"
 echo "Email on failure: $EMAIL_TO"
@@ -192,26 +198,35 @@ echo "Command:"
 printf '  %q' "${cmd[@]}"
 echo
 
-: > "$STDOUT_LOG"
-: > "$STDERR_LOG"
+if is_true "$INFERENCE_ONLY"; then
+    echo "Inference-only mode enabled. Skipping training."
+else
+    : > "$STDOUT_LOG"
+    : > "$STDERR_LOG"
 
-set +e
-"${cmd[@]}" >> "$STDOUT_LOG" 2>> "$STDERR_LOG"
-train_exit=$?
-set -e
+    set +e
+    "${cmd[@]}" >> "$STDOUT_LOG" 2>> "$STDERR_LOG"
+    train_exit=$?
+    set -e
 
-if [ "$train_exit" -ne 0 ]; then
-    echo "Training failed with exit code $train_exit"
-    echo "----- BEGIN STDERR (full) -----"
-    cat "$STDERR_LOG"
-    echo "----- END STDERR -----"
-    send_failure_email "$train_exit" || true
-    exit "$train_exit"
+    if [ "$train_exit" -ne 0 ]; then
+        echo "Training failed with exit code $train_exit"
+        echo "----- BEGIN STDERR (full) -----"
+        cat "$STDERR_LOG"
+        echo "----- END STDERR -----"
+        send_failure_email "$train_exit" || true
+        exit "$train_exit"
+    fi
+
+    echo "Training completed successfully."
 fi
 
-echo "Training completed successfully."
+RUN_TEST="$TEST_AFTER_TRAIN"
+if is_true "$INFERENCE_ONLY"; then
+    RUN_TEST="1"
+fi
 
-if [ "$TEST_AFTER_TRAIN" = "1" ] || [ "$TEST_AFTER_TRAIN" = "true" ] || [ "$TEST_AFTER_TRAIN" = "TRUE" ]; then
+if is_true "$RUN_TEST"; then
     mkdir -p "$TEST_DIR"
 
     CKPT_PATH="$TEST_CHECKPOINT"
