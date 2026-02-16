@@ -3,25 +3,22 @@ _base_ = [
     '../_base_/wandb_runtime.py'
 ]
 
-
 angle_version = 'le90'
-# fp16 = dict(loss_scale='dynamic')
 model = dict(
     type='OrientedRCNN',
     backbone=dict(
-        type='LWEGNet',
-        stem_dim=64,
-        depths=(1, 4, 4, 2),
-        norm_layer=dict(type='BN', requires_grad=True),
-        fork_feat=True,
-        drop_path_rate=0.1,
-        # init_cfg=None,
-        init_cfg=dict(type='Pretrained', prefix='backbone.', checkpoint="/srv/scratch/z5428587/checkpoints/LWEGNet_small.pth"),
-        # pretrained=None
-        ),
+        type='ResNet',
+        depth=50,
+        num_stages=4,
+        out_indices=(0, 1, 2, 3),
+        frozen_stages=1,
+        norm_cfg=dict(type='BN', requires_grad=True),
+        norm_eval=True,
+        style='pytorch',
+        init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
     neck=dict(
         type='FPN',
-        in_channels=[64, 128, 256, 512],
+        in_channels=[256, 512, 1024, 2048],
         out_channels=256,
         num_outs=5),
     rpn_head=dict(
@@ -80,7 +77,6 @@ model = dict(
                 neg_iou_thr=0.3,
                 min_pos_iou=0.3,
                 match_low_quality=True,
-                gpu_assign_thr=800,
                 ignore_iof_thr=-1),
             sampler=dict(
                 type='RandomSampler',
@@ -104,7 +100,6 @@ model = dict(
                 min_pos_iou=0.5,
                 match_low_quality=False,
                 iou_calculator=dict(type='RBboxOverlaps2D'),
-                gpu_assign_thr=800,
                 ignore_iof_thr=-1),
             sampler=dict(
                 type='RRandomSampler',
@@ -138,35 +133,14 @@ train_pipeline = [
         flip_ratio=[0.25, 0.25, 0.25],
         direction=['horizontal', 'vertical', 'diagonal'],
         version=angle_version),
-    dict(
-        type='PolyRandomRotate',
-        rotate_ratio=0.5,
-        angles_range=180,
-        auto_bound=False,
-        rect_classes=[9, 11],
-        version=angle_version),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
-
 data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=4,
     train=dict(pipeline=train_pipeline, version=angle_version),
     val=dict(version=angle_version),
     test=dict(version=angle_version))
 
-optimizer = dict(
-    _delete_=True,
-    type='AdamW',
-    lr=0.0002,
-    betas=(0.9, 0.999),
-    weight_decay=0.05)
-
-evaluation = dict(interval=1, metric='mAP', save_best='mAP')
-runner = dict(type='EpochBasedRunner', max_epochs=100)
-checkpoint_config = dict(interval=1, max_keep_ckpts=1)
-
-find_unused_parameters=False
+optimizer = dict(lr=0.005)

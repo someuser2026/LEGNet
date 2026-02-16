@@ -5,27 +5,27 @@ _base_ = [
 
 
 angle_version = 'le90'
-# fp16 = dict(loss_scale='dynamic')
 model = dict(
-    type='OrientedRCNN',
+    type='RotatedFasterRCNN',
     backbone=dict(
-        type='LWEGNet',
+        type='UnravelNet',
         stem_dim=64,
         depths=(1, 4, 4, 2),
-        norm_layer=dict(type='BN', requires_grad=True),
+        att_kernel=(11, 11, 11, 11),
+        norm_layer=dict(type='SyncBN', requires_grad=True),
         fork_feat=True,
         drop_path_rate=0.1,
-        # init_cfg=None,
-        init_cfg=dict(type='Pretrained', prefix='backbone.', checkpoint="/srv/scratch/z5428587/checkpoints/LWEGNet_small.pth"),
-        # pretrained=None
-        ),
+        # init_cfg=None',
+        init_cfg=dict(type='Pretrained',
+checkpoint="/data4/lw/UnravelNet/det/backbone_weights/unravelnet_u2.pth"),
+        pretrained=None),
     neck=dict(
         type='FPN',
         in_channels=[64, 128, 256, 512],
         out_channels=256,
         num_outs=5),
     rpn_head=dict(
-        type='OrientedRPNHead',
+        type='RotatedRPNHead',
         in_channels=256,
         feat_channels=256,
         version=angle_version,
@@ -35,23 +35,19 @@ model = dict(
             ratios=[0.5, 1.0, 2.0],
             strides=[4, 8, 16, 32, 64]),
         bbox_coder=dict(
-            type='MidpointOffsetCoder',
-            angle_range=angle_version,
-            target_means=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            target_stds=[1.0, 1.0, 1.0, 1.0, 0.5, 0.5]),
+            type='DeltaXYWHBBoxCoder',
+            target_means=[0.0, 0.0, 0.0, 0.0],
+            target_stds=[1.0, 1.0, 1.0, 1.0]),
         loss_cls=dict(
             type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0),
         loss_bbox=dict(
             type='SmoothL1Loss', beta=0.1111111111111111, loss_weight=1.0)),
     roi_head=dict(
-        type='OrientedStandardRoIHead',
+        type='RotatedStandardRoIHead',
+        version=angle_version,
         bbox_roi_extractor=dict(
-            type='RotatedSingleRoIExtractor',
-            roi_layer=dict(
-                type='RoIAlignRotated',
-                out_size=7,
-                sample_num=2,
-                clockwise=True),
+            type='SingleRoIExtractor',
+            roi_layer=dict(type='RoIAlign', output_size=7, sampling_ratio=0),
             out_channels=256,
             featmap_strides=[4, 8, 16, 32]),
         bbox_head=dict(
@@ -61,11 +57,10 @@ model = dict(
             roi_feat_size=7,
             num_classes=1,
             bbox_coder=dict(
-                type='DeltaXYWHAOBBoxCoder',
+                type='DeltaXYWHAHBBoxCoder',
                 angle_range=angle_version,
-                norm_factor=None,
+                norm_factor=2,
                 edge_swap=True,
-                proj_xy=True,
                 target_means=(.0, .0, .0, .0, .0),
                 target_stds=(0.1, 0.1, 0.2, 0.2, 0.1)),
             reg_class_agnostic=True,
@@ -80,7 +75,6 @@ model = dict(
                 neg_iou_thr=0.3,
                 min_pos_iou=0.3,
                 match_low_quality=True,
-                gpu_assign_thr=800,
                 ignore_iof_thr=-1),
             sampler=dict(
                 type='RandomSampler',
@@ -94,7 +88,7 @@ model = dict(
         rpn_proposal=dict(
             nms_pre=2000,
             max_per_img=2000,
-            nms=dict(type='nms', iou_threshold=0.8),
+            nms=dict(type='nms', iou_threshold=0.7),
             min_bbox_size=0),
         rcnn=dict(
             assigner=dict(
@@ -103,11 +97,9 @@ model = dict(
                 neg_iou_thr=0.5,
                 min_pos_iou=0.5,
                 match_low_quality=False,
-                iou_calculator=dict(type='RBboxOverlaps2D'),
-                gpu_assign_thr=800,
                 ignore_iof_thr=-1),
             sampler=dict(
-                type='RRandomSampler',
+                type='RandomSampler',
                 num=512,
                 pos_fraction=0.25,
                 neg_pos_ub=-1,
@@ -118,7 +110,7 @@ model = dict(
         rpn=dict(
             nms_pre=2000,
             max_per_img=2000,
-            nms=dict(type='nms', iou_threshold=0.8),
+            nms=dict(type='nms', iou_threshold=0.7),
             min_bbox_size=0),
         rcnn=dict(
             nms_pre=2000,
@@ -132,27 +124,19 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RResize', img_scale=(448, 448)),
+    dict(type='RResize', img_scale=(1024, 1024)),
     dict(
         type='RRandomFlip',
         flip_ratio=[0.25, 0.25, 0.25],
         direction=['horizontal', 'vertical', 'diagonal'],
-        version=angle_version),
-    dict(
-        type='PolyRandomRotate',
-        rotate_ratio=0.5,
-        angles_range=180,
-        auto_bound=False,
-        rect_classes=[9, 11],
         version=angle_version),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
-
 data = dict(
-    samples_per_gpu=2,
+    samples_per_gpu=4,
     workers_per_gpu=4,
     train=dict(pipeline=train_pipeline, version=angle_version),
     val=dict(version=angle_version),
@@ -161,12 +145,10 @@ data = dict(
 optimizer = dict(
     _delete_=True,
     type='AdamW',
-    lr=0.0002,
+    lr=0.00015,
     betas=(0.9, 0.999),
     weight_decay=0.05)
 
 evaluation = dict(interval=1, metric='mAP', save_best='mAP')
-runner = dict(type='EpochBasedRunner', max_epochs=100)
-checkpoint_config = dict(interval=1, max_keep_ckpts=1)
-
-find_unused_parameters=False
+runner = dict(type='EpochBasedRunner', max_epochs=36)
+checkpoint_config = dict(interval=1, max_keep_ckpts=10)

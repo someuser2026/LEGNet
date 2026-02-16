@@ -82,10 +82,16 @@ SEED="${SEED:-}"
 NO_VALIDATE="${NO_VALIDATE:-0}"
 RESUME_FROM="${RESUME_FROM:-}"
 WANDB_PROJECT="${WANDB_PROJECT:-}"
+TEST_AFTER_TRAIN="${TEST_AFTER_TRAIN:-1}"
+TEST_CHECKPOINT="${TEST_CHECKPOINT:-}"
 EMAIL_TO="${EMAIL_TO:-z5428587@ad.unsw.edu.au}"
 JOB_TAG="${PBS_JOBID:-manual_$$}"
 STDOUT_LOG="${WORK_DIR}/${RUN_NAME}_${JOB_TAG}.out.log"
 STDERR_LOG="${WORK_DIR}/${RUN_NAME}_${JOB_TAG}.err.log"
+TEST_DIR="${WORK_DIR}/test_artifacts"
+TEST_OUT="${TEST_DIR}/predictions.pkl"
+TEST_STDOUT_LOG="${WORK_DIR}/${RUN_NAME}_${JOB_TAG}.test.out.log"
+TEST_STDERR_LOG="${WORK_DIR}/${RUN_NAME}_${JOB_TAG}.test.err.log"
 
 send_failure_email() {
     local exit_code="$1"
@@ -142,12 +148,19 @@ echo "Config: $CONFIG_PATH"
 echo "Work dir: $WORK_DIR"
 echo "Extra args: $*"
 echo "W&B project override: ${WANDB_PROJECT:-<from config/default>}"
+echo "Run test after train: $TEST_AFTER_TRAIN"
+echo "Test checkpoint override: ${TEST_CHECKPOINT:-<auto>}"
 echo "Email on failure: $EMAIL_TO"
 echo "GPU information:"
 nvidia-smi || echo "Warning: nvidia-smi not available"
 echo "========================================="
 
 export PYTHONPATH="$REPO_ROOT:${PYTHONPATH:-}"
+export LEGNET_CONFIG_PATH="$CONFIG_PATH"
+if [ -n "$WANDB_PROJECT" ]; then
+    export WANDB_PROJECT
+fi
+
 cmd=(
     python tools/train_wandb.py
     "$CONFIG_PATH"
@@ -197,3 +210,55 @@ if [ "$train_exit" -ne 0 ]; then
 fi
 
 echo "Training completed successfully."
+
+if [ "$TEST_AFTER_TRAIN" = "1" ] || [ "$TEST_AFTER_TRAIN" = "true" ] || [ "$TEST_AFTER_TRAIN" = "TRUE" ]; then
+    mkdir -p "$TEST_DIR"
+
+    CKPT_PATH="$TEST_CHECKPOINT"
+    if [ -z "$CKPT_PATH" ]; then
+        CKPT_PATH="$(ls -1t "$WORK_DIR"/*best*.pth 2>/dev/null | head -n 1 || true)"
+        if [ -z "$CKPT_PATH" ] && [ -f "$WORK_DIR/latest.pth" ]; then
+            CKPT_PATH="$WORK_DIR/latest.pth"
+        elif [ -z "$CKPT_PATH" ]; then
+            CKPT_PATH="$(ls -1t "$WORK_DIR"/epoch_*.pth 2>/dev/null | head -n 1 || true)"
+        fi
+    fi
+
+    if [ -z "$CKPT_PATH" ] || [ ! -f "$CKPT_PATH" ]; then
+        echo "ERROR: Cannot find checkpoint for test inference."
+        echo "Checked TEST_CHECKPOINT, then *best*.pth, then $WORK_DIR/latest.pth, then epoch_*.pth"
+        exit 1
+    fi
+
+    test_cmd=(
+        python tools/test.py
+        "$CONFIG_PATH"
+        "$CKPT_PATH"
+        --work-dir "$TEST_DIR"
+        --out "$TEST_OUT"
+        --gpu-ids 0
+    )
+
+    echo "Test command:"
+    printf '  %q' "${test_cmd[@]}"
+    echo
+
+    : > "$TEST_STDOUT_LOG"
+    : > "$TEST_STDERR_LOG"
+
+    set +e
+    "${test_cmd[@]}" >> "$TEST_STDOUT_LOG" 2>> "$TEST_STDERR_LOG"
+    test_exit=$?
+    set -e
+
+    if [ "$test_exit" -ne 0 ]; then
+        echo "Post-train test inference failed with exit code $test_exit"
+        echo "----- BEGIN TEST STDERR (full) -----"
+        cat "$TEST_STDERR_LOG"
+        echo "----- END TEST STDERR -----"
+        exit "$test_exit"
+    fi
+
+    echo "Test inference completed successfully."
+    echo "Predictions saved to: $TEST_OUT"
+fi
