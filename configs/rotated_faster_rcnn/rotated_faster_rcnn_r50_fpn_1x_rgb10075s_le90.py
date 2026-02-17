@@ -12,7 +12,7 @@ model = dict(
         stem_dim=64,
         depths=(1, 4, 4, 2),
         att_kernel=(11, 11, 11, 11),
-        norm_layer=dict(type='SyncBN', requires_grad=True),
+        norm_layer=dict(type='BN', requires_grad=True),
         fork_feat=True,
         drop_path_rate=0.1,
         # init_cfg=None',
