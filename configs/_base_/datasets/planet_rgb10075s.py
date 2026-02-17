@@ -23,7 +23,7 @@ test_pipeline = [
         transforms=[
             dict(type='RResize'),
             dict(type='Normalize', **img_norm_cfg),
-            dict(type='Pad', size_divisor=32),
+            dict(type='Pad', size = (448, 448)),
             dict(type='DefaultFormatBundle'),
             dict(type='Collect', keys=['img'])
         ])

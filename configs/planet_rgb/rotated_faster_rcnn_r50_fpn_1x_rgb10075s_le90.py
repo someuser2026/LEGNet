@@ -131,7 +131,7 @@ train_pipeline = [
         direction=['horizontal', 'vertical', 'diagonal'],
         version=angle_version),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', size_divisor=32),
+    dict(type='Pad', size=(448, 448)),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
