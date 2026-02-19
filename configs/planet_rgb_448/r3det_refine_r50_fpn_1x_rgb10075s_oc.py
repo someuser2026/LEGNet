@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/planet_rgb10075s.py', '../_base_/schedules/schedule_planet.py',
+    '../_base_/datasets/planet_rgb10075s_448.py', '../_base_/schedules/schedule_planet.py',
     '../_base_/wandb_runtime.py'
 ]
 

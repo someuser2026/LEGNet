@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/planet_rgb10075s.py', '../_base_/schedules/schedule_3x.py',
+    '../_base_/datasets/planet_rgb10075s_448.py', '../_base_/schedules/schedule_3x.py',
     '../_base_/default_runtime.py'
 ]
 angle_version = 'le90'

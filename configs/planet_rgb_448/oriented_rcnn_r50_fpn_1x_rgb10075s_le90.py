@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/planet_rgb10075s.py', '../_base_/schedules/schedule_planet.py',
+    '../_base_/datasets/planet_rgb10075s_448.py', '../_base_/schedules/schedule_planet.py',
     '../_base_/wandb_runtime.py'
 ]
 
@@ -28,7 +28,7 @@ model = dict(
         version=angle_version,
         anchor_generator=dict(
             type='AnchorGenerator',
-            scales=[8],
+            scales=[2, 4, 8],
             ratios=[0.5, 1.0, 2.0],
             strides=[4, 8, 16, 32, 64]),
         bbox_coder=dict(
