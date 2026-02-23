@@ -1,6 +1,10 @@
 # dataset settings
-dataset_type = 'DOTADataset'
+custom_imports = dict(
+    imports=['custom_datasets.dota_jpg_dataset'],
+    allow_failed_imports=False)
+dataset_type = 'DOTAJpgDataset'
 classes = ('foreground',)
+img_suffixes = ('.jpg', '.png', '.jpeg', '.JPG', '.PNG', '.JPEG')
 data_root = "/srv/scratch/z5428587/data_processed/Global/Annotated/variants/obb/planet_nearmap_c448_ov35_kf20_10075-single_seed0/"
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -34,18 +38,21 @@ data = dict(
     train=dict(
         type=dataset_type,
         classes=classes,
+        img_suffixes=img_suffixes,
         ann_file=data_root + 'annotations_dota/train/',
         img_prefix=data_root + 'images/train/',
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
         classes=classes,
+        img_suffixes=img_suffixes,
         ann_file=data_root + 'annotations_dota/val/',
         img_prefix=data_root + 'images/val/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
         classes=classes,
+        img_suffixes=img_suffixes,
         ann_file=data_root + 'annotations_dota/test/',
         img_prefix=data_root + 'images/test/',
         pipeline=test_pipeline))
