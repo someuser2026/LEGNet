@@ -1,7 +1,4 @@
 # dataset settings
-custom_imports = dict(
-    imports=['custom_datasets.dota_jpg_dataset'],
-    allow_failed_imports=False)
 dataset_type = 'DOTAJpgDataset'
 classes = ('foreground',)
 img_suffixes = ('.jpg', '.png', '.jpeg', '.JPG', '.PNG', '.JPEG')

@@ -1,8 +1,8 @@
 import glob
 import os.path as osp
 
-from mmrotate.datasets.builder import ROTATED_DATASETS
-from mmrotate.datasets.dota import DOTADataset
+from .builder import ROTATED_DATASETS
+from .dota import DOTADataset
 
 
 @ROTATED_DATASETS.register_module()
