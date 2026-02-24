@@ -246,7 +246,7 @@ if is_true "$RUN_TEST"; then
     fi
 
     test_cmd=(
-        python tools/test.py
+        python tools/test_dict.py
         "$CONFIG_PATH"
         "$CKPT_PATH"
         --work-dir "$TEST_DIR"

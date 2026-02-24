@@ -26,6 +26,7 @@ EMAIL_TO="z5428587@ad.unsw.edu.au"
 WANDB_PROJECT=""
 WORK_DIR_BASE=""
 INFERENCE_ONLY="0"
+INFERENCE_WALLTIME="02:00:00"
 TEST_AFTER_TRAIN=""
 TEST_CHECKPOINT=""
 QSUB_RESOURCES="select=1:ncpus=6:ngpus=1:mem=32gb:gpu_model=A100"
@@ -141,6 +142,9 @@ for config_dir in "${CONFIG_DIRS[@]}"; do
 done
 echo "PBS script: $PBS_SCRIPT"
 echo "Inference-only: $INFERENCE_ONLY"
+if [[ "$INFERENCE_ONLY" = "1" ]]; then
+    echo "Inference-only walltime override: $INFERENCE_WALLTIME"
+fi
 echo "Dry-run: $DRY_RUN"
 echo
 
@@ -161,7 +165,11 @@ for cfg in "${CONFIGS[@]}"; do
         env_vars="${env_vars},TEST_CHECKPOINT=${TEST_CHECKPOINT}"
     fi
 
-    cmd=(qsub -l "$QSUB_RESOURCES" -V -v "$env_vars" "$PBS_SCRIPT")
+    cmd=(qsub -l "$QSUB_RESOURCES")
+    if [[ "$INFERENCE_ONLY" = "1" ]]; then
+        cmd+=(-l "walltime=${INFERENCE_WALLTIME}")
+    fi
+    cmd+=(-V -v "$env_vars" "$PBS_SCRIPT")
     echo "Config: $(basename "$cfg")"
     echo "  ${cmd[*]}"
 
