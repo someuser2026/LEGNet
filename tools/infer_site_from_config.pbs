@@ -48,7 +48,8 @@ Examples:
 
 Notes:
   - model_name is derived as stem(orig_config).
-  - checkpoint is auto-selected as newest: $SCRATCH/runs/mmdet/<model_name>/best_*.pth
+  - checkpoint is auto-selected as newest:
+      $SCRATCH/runs/mmdet/obb/<model_name>/best_*.pth
   - image dir:
       $SCRATCH/data_processed/<site_name>/PSScene/visual/pngs/images_c448_ov35_kf20
   - output pkl:
@@ -88,9 +89,8 @@ if [ -z "$SCRATCH_DIR" ]; then
 fi
 
 MODEL_NAME="$(basename "${CONFIG_PATH%.py}")"
-RUN_DIR="${SCRATCH_DIR%/}/runs/mmdet/${MODEL_NAME}"
+RUN_DIR="${SCRATCH_DIR%/}/runs/mmdet/obb/${MODEL_NAME}"
 BEST_CKPT="$(ls -1t "$RUN_DIR"/best_*.pth 2>/dev/null | head -n 1 || true)"
-
 if [ -z "$BEST_CKPT" ]; then
     echo "ERROR: No best_*.pth found in: $RUN_DIR"
     exit 1
