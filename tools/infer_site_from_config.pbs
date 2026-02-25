@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+#PBS -N legnet_infer
+#PBS -l select=1:ncpus=6:ngpus=1:mem=32gb:gpu_model=A100
+#PBS -l walltime=02:00:00
+#PBS -M z5428587@ad.unsw.edu.au
+#PBS -m abe
+#PBS -j oe
+
+set -euo pipefail
+
+# Micromamba configuration (can be overridden via qsub -v)
+export MAMBA_EXE="${MAMBA_EXE:-/srv/scratch/z5428587/mamba/bin/micromamba}"
+export MAMBA_ROOT_PREFIX="${MAMBA_ROOT_PREFIX:-/srv/scratch/z5428587/mamba}"
+ENV_NAME="${ENV_NAME:-LEGNet-Det}"
+
+echo "Using micromamba from: $MAMBA_EXE"
+echo "Root prefix: $MAMBA_ROOT_PREFIX"
+
+if [ -x "$MAMBA_EXE" ]; then
+    __mamba_setup="$("$MAMBA_EXE" shell hook --shell bash --root-prefix "$MAMBA_ROOT_PREFIX" 2>/dev/null || true)"
+    if [ -n "$__mamba_setup" ]; then
+        eval "$__mamba_setup"
+        if micromamba activate "$ENV_NAME"; then
+            echo "Environment activated: $ENV_NAME"
+        else
+            echo "ERROR: Failed to activate environment '$ENV_NAME'"
+            exit 1
+        fi
+    else
+        echo "ERROR: Failed to initialize micromamba shell hook."
+        exit 1
+    fi
+else
+    echo "WARNING: micromamba not found at $MAMBA_EXE. Continuing without activation."
+fi
+
+REPO_ROOT="${REPO_ROOT:-${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/.." && pwd)}}"
+cd "$REPO_ROOT"
+
+usage() {
+    cat <<'EOF'
+Usage:
+  qsub -V tools/infer_site_from_config.pbs -- <site_name> <orig_config.py>
+
+Examples:
+  qsub -V tools/infer_site_from_config.pbs -- site_a configs/planet_nearmap_448/orcnn_legnet_small_rgb10075s_seed0_test_ss_e36.py
+  qsub -V -v "SITE_NAME=site_a,ORIG_CONFIG=configs/planet_nearmap_448/orcnn_legnet_small_rgb10075s_seed0_test_ss_e36.py" tools/infer_site_from_config.pbs
+
+Notes:
+  - model_name is derived as stem(orig_config).
+  - checkpoint is auto-selected as newest: $SCRATCH/runs/mmdet/<model_name>/best_*.pth
+  - image dir:
+      $SCRATCH/data_processed/<site_name>/PSScene/visual/pngs/images_c448_ov35_kf20
+  - output pkl:
+      $SCRATCH/data_processed/<site_name>/mmrotate_predictions/<model_name>/predictions_stem_keyed.pkl
+EOF
+}
+
+SITE_NAME="${1:-${SITE_NAME:-}}"
+ORIG_CONFIG="${2:-${ORIG_CONFIG:-${CONFIG:-${CONFIG_YAML:-}}}}"
+
+if [ "${1:-}" = "$SITE_NAME" ]; then
+    shift
+fi
+if [ "${1:-}" = "$ORIG_CONFIG" ]; then
+    shift
+fi
+
+if [ -z "$SITE_NAME" ] || [ -z "$ORIG_CONFIG" ]; then
+    usage
+    exit 1
+fi
+
+CONFIG_PATH="$ORIG_CONFIG"
+if [ ! -f "$CONFIG_PATH" ]; then
+    if [ -f "$REPO_ROOT/$CONFIG_PATH" ]; then
+        CONFIG_PATH="$REPO_ROOT/$CONFIG_PATH"
+    else
+        echo "ERROR: Config file not found: $ORIG_CONFIG"
+        exit 1
+    fi
+fi
+
+SCRATCH_DIR="${SCRATCH:-}"
+if [ -z "$SCRATCH_DIR" ]; then
+    echo "ERROR: SCRATCH is not set. Submit with qsub -V or pass SCRATCH via -v."
+    exit 1
+fi
+
+MODEL_NAME="$(basename "${CONFIG_PATH%.py}")"
+RUN_DIR="${SCRATCH_DIR%/}/runs/mmdet/${MODEL_NAME}"
+BEST_CKPT="$(ls -1t "$RUN_DIR"/best_*.pth 2>/dev/null | head -n 1 || true)"
+
+if [ -z "$BEST_CKPT" ]; then
+    echo "ERROR: No best_*.pth found in: $RUN_DIR"
+    exit 1
+fi
+
+IMG_DIR="${SCRATCH_DIR%/}/data_processed/${SITE_NAME}/PSScene/visual/pngs/images_c448_ov35_kf20"
+if [ ! -d "$IMG_DIR" ]; then
+    echo "ERROR: Image directory not found: $IMG_DIR"
+    exit 1
+fi
+
+OUT_DIR="${SCRATCH_DIR%/}/data_processed/${SITE_NAME}/mmrotate_predictions/${MODEL_NAME}"
+OUT_PKL="${OUT_DIR}/predictions_stem_keyed.pkl"
+mkdir -p "$OUT_DIR"
+EMAIL_TO="${EMAIL_TO:-z5428587@ad.unsw.edu.au}"
+JOB_TAG="${PBS_JOBID:-manual_$$}"
+STDOUT_LOG="${OUT_DIR}/${MODEL_NAME}_${SITE_NAME}_${JOB_TAG}.out.log"
+STDERR_LOG="${OUT_DIR}/${MODEL_NAME}_${SITE_NAME}_${JOB_TAG}.err.log"
+
+send_failure_email() {
+    local exit_code="$1"
+    local subject="LEGNet PBS FAILED: infer ${MODEL_NAME} on ${SITE_NAME} (job ${PBS_JOBID:-N/A})"
+    local body_file
+    body_file="$(mktemp)"
+
+    {
+        echo "LEGNet inference failed."
+        echo "Time: $(date)"
+        echo "Job ID: ${PBS_JOBID:-N/A}"
+        echo "Job Name: ${PBS_JOBNAME:-N/A}"
+        echo "Host: $(hostname)"
+        echo "Repo: $REPO_ROOT"
+        echo "Site: $SITE_NAME"
+        echo "Config: $CONFIG_PATH"
+        echo "Model name: $MODEL_NAME"
+        echo "Checkpoint: $BEST_CKPT"
+        echo "Image dir: $IMG_DIR"
+        echo "Output pkl: $OUT_PKL"
+        echo "Exit code: $exit_code"
+        echo "Stdout log: $STDOUT_LOG"
+        echo "Stderr log: $STDERR_LOG"
+        echo
+        echo "Command:"
+        printf '  %q' "${cmd[@]}"
+        echo
+        echo
+        echo "----- BEGIN STDERR (full) -----"
+        if [ -s "$STDERR_LOG" ]; then
+            cat "$STDERR_LOG"
+        else
+            echo "(stderr log is empty)"
+        fi
+        echo "----- END STDERR -----"
+    } > "$body_file"
+
+    if command -v mail >/dev/null 2>&1; then
+        mail -s "$subject" "$EMAIL_TO" < "$body_file"
+    elif command -v mailx >/dev/null 2>&1; then
+        mailx -s "$subject" "$EMAIL_TO" < "$body_file"
+    elif command -v sendmail >/dev/null 2>&1; then
+        {
+            echo "To: $EMAIL_TO"
+            echo "Subject: $subject"
+            echo
+            cat "$body_file"
+        } | sendmail -t
+    else
+        echo "WARNING: No mail tool found (mail/mailx/sendmail). Cannot send failure email."
+        echo "Failure details are in: $STDERR_LOG"
+    fi
+
+    rm -f "$body_file"
+}
+
+echo "========================================="
+echo "Job started at: $(date)"
+echo "Job ID: ${PBS_JOBID:-N/A}"
+echo "Job name: ${PBS_JOBNAME:-N/A}"
+echo "Node: $(hostname)"
+echo "Repo root: $REPO_ROOT"
+echo "Python: $(which python)"
+echo "Python version: $(python --version 2>&1)"
+echo "Site: $SITE_NAME"
+echo "Config: $CONFIG_PATH"
+echo "Model name: $MODEL_NAME"
+echo "Checkpoint: $BEST_CKPT"
+echo "Image dir: $IMG_DIR"
+echo "Output pkl: $OUT_PKL"
+echo "Email on failure: $EMAIL_TO"
+echo "GPU information:"
+nvidia-smi || echo "Warning: nvidia-smi not available"
+echo "========================================="
+
+export PYTHONPATH="$REPO_ROOT:${PYTHONPATH:-}"
+cmd=(
+    python tools/test_dict.py
+    "$CONFIG_PATH"
+    "$BEST_CKPT"
+    --out "$OUT_PKL"
+    --gpu-ids 0
+    --cfg-options
+    "data.test.ann_file=$IMG_DIR"
+    "data.test.img_prefix=$IMG_DIR"
+)
+
+if [ "$#" -gt 0 ]; then
+    cmd+=("$@")
+fi
+
+echo "Command:"
+printf '  %q' "${cmd[@]}"
+echo
+
+: > "$STDOUT_LOG"
+: > "$STDERR_LOG"
+
+set +e
+"${cmd[@]}" >> "$STDOUT_LOG" 2>> "$STDERR_LOG"
+infer_exit=$?
+set -e
+
+if [ "$infer_exit" -ne 0 ]; then
+    echo "Inference failed with exit code $infer_exit"
+    echo "----- BEGIN STDERR (full) -----"
+    cat "$STDERR_LOG"
+    echo "----- END STDERR -----"
+    send_failure_email "$infer_exit" || true
+    exit "$infer_exit"
+fi
+
+echo "Done."
+echo "Predictions written to: $OUT_PKL"
+echo "Stdout log: $STDOUT_LOG"
+echo "Stderr log: $STDERR_LOG"
